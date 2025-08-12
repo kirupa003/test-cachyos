@@ -1,56 +1,42 @@
 #!/bin/bash
 
-# Caelestia Hyprland Installer for CachyOS
-# Simple installation script for Arch-based systems
-# Updated: August 2025
-
 set -e
 
-# Colors for output
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-print_status() {
-    echo -e "${BLUE}[*]${NC} $1"
-}
+print_status() { echo -e "${BLUE}[*]${NC} $1"; }
+print_success() { echo -e "${GREEN}[✓]${NC} $1"; }
+print_warning() { echo -e "${YELLOW}[!]${NC} $1"; }
 
-print_success() {
-    echo -e "${GREEN}[✓]${NC} $1"
-}
-
-print_warning() {
-    echo -e "${YELLOW}[!]${NC} $1"
-}
-
-# Check if running as root
+# Check root
 if [[ $EUID -eq 0 ]]; then
-   echo "This script should not be run as root"
-   exit 1
-fi
-
-# Check if on Arch-based system
-print_status "Checking system compatibility..."
-if ! command -v pacman &> /dev/null; then
-    echo "This script is for Arch-based systems (CachyOS). Pacman not found!"
+    echo "Do not run as root"
     exit 1
 fi
 
-print_status "Updating system packages..."
-# Skip full upgrade in live session to avoid breaking ISO
-if [[ -f /run/archiso/bootmnt/arch/aitab ]]; then
-    print_warning "Live ISO detected — skipping full system upgrade"
-else
-    sudo pacman -Syu --noconfirm
+# Check Arch-based
+print_status "Checking system compatibility..."
+if ! command -v pacman &> /dev/null; then
+    echo "Pacman not found — must be Arch-based"
+    exit 1
 fi
 
-remove_conflicts() {
-    sudo pacman -Rdd --noconfirm $(pacman -Qq | grep -E "$1") 2>/dev/null || true
-}
+# Full system update
+print_status "Updating system packages..."
+sudo pacman -Syu --noconfirm
 
+# Remove known conflicts for GUI stack
+print_status "Removing packages that conflict with Hyprland environment..."
+sudo pacman -Rdd --noconfirm \
+    pulseaudio pulseaudio-alsa pipewire-media-session \
+    swaybg swaylock xdg-desktop-portal xdg-desktop-portal-wlr \
+    2>/dev/null || true
+
+# Install Hyprland + essentials
 print_status "Installing Hyprland and essential packages..."
-remove_conflicts 'pulseaudio|swaybg|xdg-desktop-portal'
 sudo pacman -S --needed --overwrite="*" --noconfirm \
     hyprland \
     kitty \
@@ -68,8 +54,8 @@ sudo pacman -S --needed --overwrite="*" --noconfirm \
     qt6-wayland \
     xdg-desktop-portal-hyprland
 
+# Install additional utilities
 print_status "Installing additional utilities and applications..."
-remove_conflicts ''
 sudo pacman -S --needed --overwrite="*" --noconfirm \
     thunar \
     thunar-volman \
@@ -85,16 +71,16 @@ sudo pacman -S --needed --overwrite="*" --noconfirm \
     wget \
     unzip
 
+# Fonts
 print_status "Installing fonts and themes..."
-remove_conflicts ''
 sudo pacman -S --needed --overwrite="*" --noconfirm \
     ttf-font-awesome \
     ttf-jetbrains-mono-nerd \
     noto-fonts \
     noto-fonts-emoji
 
-print_status "Installing audio system..."
-remove_conflicts 'pulseaudio'
+# Audio stack
+print_status "Installing PipeWire audio..."
 sudo pacman -S --needed --overwrite="*" --noconfirm \
     pipewire \
     pipewire-alsa \
@@ -103,6 +89,7 @@ sudo pacman -S --needed --overwrite="*" --noconfirm \
     wireplumber \
     pavucontrol
 
+# Clone Caelestia
 print_status "Cloning Caelestia dotfiles..."
 cd "$HOME"
 if [[ -d "caelestia" ]]; then
@@ -116,7 +103,7 @@ cd caelestia
 print_status "Installing Caelestia configuration..."
 mkdir -p "$HOME/.config"
 
-print_warning "Caelestia includes Fish shell configurations for enhanced terminal experience."
+print_warning "Caelestia includes Fish shell configurations."
 print_status "Would you like to install Fish shell? (Y/n)"
 read -r fish_response
 
@@ -129,53 +116,42 @@ else
     INSTALL_WITH_FISH=false
 fi
 
+# Run Caelestia install script
 if [[ -f "install.sh" ]]; then
     chmod +x install.sh
-    print_status "Running Caelestia install script..."
     if [[ "$INSTALL_WITH_FISH" == true ]]; then
         fish install.sh
     else
-        bash install.sh 2>/dev/null || {
-            print_warning "Install script requires Fish. Installing manually..."
-            MANUAL_INSTALL=true
-        }
+        bash install.sh 2>/dev/null || MANUAL_INSTALL=true
     fi
 elif [[ -f "install" ]]; then
     chmod +x install
-    print_status "Running Caelestia install script..."
     if [[ "$INSTALL_WITH_FISH" == true ]]; then
         fish install
     else
-        bash install 2>/dev/null || {
-            print_warning "Install script requires Fish. Installing manually..."
-            MANUAL_INSTALL=true
-        }
+        bash install 2>/dev/null || MANUAL_INSTALL=true
     fi
 elif [[ -f "install.fish" ]]; then
     if [[ "$INSTALL_WITH_FISH" == true ]]; then
         chmod +x install.fish
         fish install.fish
     else
-        print_warning "install.fish script requires Fish shell. Installing manually..."
         MANUAL_INSTALL=true
     fi
 else
-    print_warning "No install script found. Installing manually..."
     MANUAL_INSTALL=true
 fi
 
+# Manual config copy
 if [[ "$MANUAL_INSTALL" == true ]]; then
     if [[ -d ".config" ]]; then
         for config_dir in .config/*/; do
             config_name=$(basename "$config_dir")
             if [[ -d "$HOME/.config/$config_name" ]]; then
-                print_warning "Backing up existing $config_name config..."
                 mv "$HOME/.config/$config_name" "$HOME/.config/${config_name}_backup_$(date +%Y%m%d_%H%M%S)"
             fi
         done
-        
         if [[ "$INSTALL_WITH_FISH" == false ]]; then
-            print_status "Copying configs (excluding Fish-specific configs)..."
             for config_dir in .config/*/; do
                 config_name=$(basename "$config_dir")
                 if [[ "$config_name" != "fish" ]]; then
@@ -185,35 +161,26 @@ if [[ "$MANUAL_INSTALL" == true ]]; then
         else
             cp -r .config/* "$HOME/.config/"
         fi
-        
         print_success "Configuration files copied"
     fi
 fi
 
-print_status "Setting up Fish shell..."
-print_warning "Would you like to set Fish as your default shell? (Y/n)"
+# Default shell
+print_status "Would you like to set Fish as your default shell? (Y/n)"
 read -r response
-if [[ "$response" =~ ^[Nn]$ ]]; then
-    print_status "Keeping current shell"
-else
+if [[ ! "$response" =~ ^[Nn]$ ]]; then
     chsh -s "$(which fish)"
     print_success "Default shell changed to Fish"
 fi
 
+# Enable services
 print_status "Enabling user services..."
 systemctl --user enable pipewire pipewire-pulse wireplumber
 
-print_status "Setting up directories..."
+# Setup dirs
 mkdir -p "$HOME/.local/bin"
 mkdir -p "$HOME/.local/share/applications"
 mkdir -p "$HOME/Pictures/Screenshots"
 
 print_success "Caelestia installation completed!"
-echo ""
-print_status "🎉 Next steps:"
-echo "1. Log out of your current session"
-echo "2. Select 'Hyprland' at the login screen"
-echo "3. Enjoy your Caelestia desktop!"
-echo ""
-print_status "📱 Key shortcuts (once logged into Hyprland):"
-echo "• Super + Enter
+echo "Logout, select Hyprland at login, and enjoy!"
