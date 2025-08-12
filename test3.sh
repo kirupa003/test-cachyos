@@ -7,7 +7,6 @@
 set -e
 
 # Colors for output
-RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
@@ -46,9 +45,12 @@ else
     sudo pacman -Syu --noconfirm
 fi
 
+remove_conflicts() {
+    sudo pacman -Rdd --noconfirm $(pacman -Qq | grep -E "$1") 2>/dev/null || true
+}
+
 print_status "Installing Hyprland and essential packages..."
-# Remove known conflicting packages before installing
-sudo pacman -Rdd --noconfirm pulseaudio pulseaudio-alsa 2>/dev/null || true
+remove_conflicts 'pulseaudio|swaybg|xdg-desktop-portal'
 sudo pacman -S --needed --overwrite="*" --noconfirm \
     hyprland \
     kitty \
@@ -67,6 +69,7 @@ sudo pacman -S --needed --overwrite="*" --noconfirm \
     xdg-desktop-portal-hyprland
 
 print_status "Installing additional utilities and applications..."
+remove_conflicts ''
 sudo pacman -S --needed --overwrite="*" --noconfirm \
     thunar \
     thunar-volman \
@@ -83,6 +86,7 @@ sudo pacman -S --needed --overwrite="*" --noconfirm \
     unzip
 
 print_status "Installing fonts and themes..."
+remove_conflicts ''
 sudo pacman -S --needed --overwrite="*" --noconfirm \
     ttf-font-awesome \
     ttf-jetbrains-mono-nerd \
@@ -90,8 +94,7 @@ sudo pacman -S --needed --overwrite="*" --noconfirm \
     noto-fonts-emoji
 
 print_status "Installing audio system..."
-# Remove conflicting audio packages before PipeWire
-sudo pacman -Rdd --noconfirm pulseaudio pulseaudio-alsa 2>/dev/null || true
+remove_conflicts 'pulseaudio'
 sudo pacman -S --needed --overwrite="*" --noconfirm \
     pipewire \
     pipewire-alsa \
@@ -111,24 +114,21 @@ git clone https://github.com/caelestia-dots/caelestia.git
 cd caelestia
 
 print_status "Installing Caelestia configuration..."
-# Create config directory if it doesn't exist
 mkdir -p "$HOME/.config"
 
-# Ask user about Fish shell
 print_warning "Caelestia includes Fish shell configurations for enhanced terminal experience."
 print_status "Would you like to install Fish shell? (Y/n)"
 read -r fish_response
 
 if [[ ! "$fish_response" =~ ^[Nn]$ ]]; then
     print_status "Installing Fish shell..."
-    sudo pacman -S --needed --noconfirm fish
+    sudo pacman -S --needed --overwrite="*" --noconfirm fish
     INSTALL_WITH_FISH=true
 else
     print_status "Skipping Fish shell installation"
     INSTALL_WITH_FISH=false
 fi
 
-# Run the Caelestia install script if it exists
 if [[ -f "install.sh" ]]; then
     chmod +x install.sh
     print_status "Running Caelestia install script..."
@@ -164,10 +164,8 @@ else
     MANUAL_INSTALL=true
 fi
 
-# Manual installation if needed
 if [[ "$MANUAL_INSTALL" == true ]]; then
     if [[ -d ".config" ]]; then
-        # Backup existing configs
         for config_dir in .config/*/; do
             config_name=$(basename "$config_dir")
             if [[ -d "$HOME/.config/$config_name" ]]; then
@@ -176,7 +174,6 @@ if [[ "$MANUAL_INSTALL" == true ]]; then
             fi
         done
         
-        # Skip Fish configs if Fish not installed
         if [[ "$INSTALL_WITH_FISH" == false ]]; then
             print_status "Copying configs (excluding Fish-specific configs)..."
             for config_dir in .config/*/; do
@@ -204,7 +201,6 @@ else
 fi
 
 print_status "Enabling user services..."
-# Enable pipewire services
 systemctl --user enable pipewire pipewire-pulse wireplumber
 
 print_status "Setting up directories..."
@@ -220,17 +216,4 @@ echo "2. Select 'Hyprland' at the login screen"
 echo "3. Enjoy your Caelestia desktop!"
 echo ""
 print_status "📱 Key shortcuts (once logged into Hyprland):"
-echo "• Super + Enter       → Open terminal (Kitty)"
-echo "• Super + D           → Application launcher (Wofi)"
-echo "• Super + Q           → Close window"
-echo "• Super + M           → Exit Hyprland"
-echo "• Super + V           → Toggle floating mode"
-echo "• Super + Arrow keys  → Move focus"
-echo ""
-print_warning "📁 Important notes:"
-echo "• Configuration files are in ~/.config/"
-echo "• Don't delete ~/caelestia folder (contains linked configs)"
-echo "• Screenshots saved to ~/Pictures/Screenshots/"
-echo "• For help: https://github.com/caelestia-dots/caelestia"
-echo ""
-print_status "All done! 🚀 Logout and select Hyprland to start using Caelestia!"
+echo "• Super + Enter
